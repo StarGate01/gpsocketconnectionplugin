@@ -1,0 +1,33 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Configure Debug",
+            "type": "shell",
+            "command": "mkdir -p build && cd build && direnv exec . cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=$(pwd)/../install ..",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Compile",
+            "type": "shell",
+            "command": "cd build && direnv exec . make -j$(nproc) && direnv exec . make install",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "rm -rf build install",
+            "problemMatcher": []
+        }
+    ]
+}
