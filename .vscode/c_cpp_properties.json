@@ -4,7 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/src/**",
-                "/nix/store/4bw7czgvl3qp3xshwwxssm283ccb3y49-globalplatform-2.4.0-unreleased/include"
+                "/nix/store/4bw7czgvl3qp3xshwwxssm283ccb3y49-globalplatform-2.4.0-unreleased/include/**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
