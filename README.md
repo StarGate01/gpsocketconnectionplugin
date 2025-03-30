@@ -1,8 +1,8 @@
-# Summary
+# GlobalPlatform Unix socket connection plugin
 
-This is a Unix socket connection plugin for the GlobalPlatform Library.
+This is a Unix socket connection plugin for the GlobalPlatform Library (https://github.com/kaoh/globalplatform).
 
-It is based on the PC/SC connection plugin, see https://github.com/kaoh/globalplatform/tree/master/gppcscconnectionplugin .
+It is based on the upstream PC/SC connection plugin, see https://github.com/kaoh/globalplatform/tree/master/gppcscconnectionplugin .
 
 ## Building
 
