@@ -1,0 +1,27 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1742794639,
+        "narHash": "sha256-aotNW3rhy0gsxXK3mmIpQtrNJIQcMtBh4UjjLul+Euo=",
+        "owner": "StarGate01",
+        "repo": "nixpkgs",
+        "rev": "68ae81ee611cad3649e8f5fe66e660ef7100e19a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "StarGate01",
+        "ref": "gpshell-python",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
