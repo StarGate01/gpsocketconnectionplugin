@@ -78,7 +78,7 @@ def list_applets(cardContext, cardInfo):
         print(f" - Version: {app.versionNumber[0]}.{app.versionNumber[1]}")
         print(f" - Lifecycle: {app.lifeCycleState}")
         print(f" - Privileges: {app.privileges}")
-    print("")
+        print("")
     gp.delete_GP211_APPLICATION_DATA_Array(applData)
 
 def apdu_proxy(card, sock, stop_event):
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     print(f"KDD: {kdd.hex()}")
 
     # Open sockets and write ATR
-    app_socket, plugin_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    app_socket, plugin_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC)
     app_socket.sendmsg([bytes(atr)])
 
     # Start ADPU proxy
