@@ -10,11 +10,12 @@ from smartcard.CardRequest import CardRequest
 from smartcard.CardType import AnyCardType
 from smartcard.ExclusiveConnectCardConnection import ExclusiveConnectCardConnection
 
+ISD_AID = bytearray.fromhex("A000000151000000")
+
 
 def list_applets(cardContext, cardInfo):
     # Select ISD
-    isd_aid = bytearray.fromhex("A000000151000000")
-    gp.OPGP_select_application(cardContext, cardInfo, isd_aid, len(isd_aid))
+    gp.OPGP_select_application(cardContext, cardInfo, ISD_AID, len(ISD_AID))
 
     # Read secure channel parameters
     scp = bytearray(1)
@@ -26,8 +27,8 @@ def list_applets(cardContext, cardInfo):
     key = bytearray.fromhex("404142434445464748494A4B4C4D4E4F")
     zero_key = bytearray(16)
     secInfo = gp.GP211_SECURITY_INFO()
-    secInfo.invokingAid = isd_aid
-    secInfo.invokingAidLength = len(isd_aid)
+    secInfo.invokingAid = ISD_AID
+    secInfo.invokingAidLength = len(ISD_AID)
     gp.GP211_mutual_authentication(cardContext, cardInfo, 
         baseKey = zero_key, S_ENC = key, S_MAC = key, DEK = key, keyLength = len(key),
         keySetVersion = 0, keyIndex = 0, secureChannelProtocol = scp[0], secureChannelProtocolImpl = scpImpl[0],
@@ -80,7 +81,7 @@ def list_applets(cardContext, cardInfo):
     print("")
     gp.delete_GP211_APPLICATION_DATA_Array(applData)
 
-def apdu_proxy(card, sock, stop_eventc):
+def apdu_proxy(card, sock, stop_event):
     try:
         sock.settimeout(0.5)
         while not stop_event.is_set():
@@ -89,10 +90,10 @@ def apdu_proxy(card, sock, stop_eventc):
                 if not command:
                     print("Connection closed by peer.")
                     break
-                print(f">> {command.hex()}")
+                #print(f">> {command.hex()}")
                 data, sw1, sw2 = card.connection.transmit(list(command))
                 response = bytes(data + [sw1, sw2])
-                print(f"<< {response.hex()}")
+                #print(f"<< {response.hex()}")
                 sock.send(response)
 
             except socket.timeout:
@@ -112,8 +113,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Enable debug logging to the console
-    os.environ["GLOBALPLATFORM_DEBUG"] = "1"
-    os.environ["GLOBALPLATFORM_LOGFILE"] = "/dev/stdout"
+    #os.environ["GLOBALPLATFORM_DEBUG"] = "1"
+    #os.environ["GLOBALPLATFORM_LOGFILE"] = "/dev/stdout"
 
     # Wait for and connect to card via PC/SC
     print(f'info: Using reader {args.reader}, waiting for specified cards ... ', end='', flush=True)
@@ -124,6 +125,16 @@ if __name__ == '__main__':
     card.connection.connect()
     atr = card.connection.getATR()
     print(f'info: Found card with ATR: {bytes(atr).hex()}')
+
+    # Read key diversification data (KDD ID)
+    data, sw1, sw2 = card.connection.transmit([0x00, 0xa4, 0x04, 0x00, len(ISD_AID)] + list(ISD_AID))
+    if(sw1 != 0x90 and sw2 != 0x00):
+        raise Exception("Cannot select ISD")
+    data, sw1, sw2 = card.connection.transmit([0x80, 0x50, 0x00, 0x00, 8] + list(bytearray(8)))
+    if(sw1 != 0x90 and sw2 != 0x00):
+        raise Exception("Cannot process initialize update")
+    kdd = bytes(data[:10])
+    print(f"KDD: {kdd.hex()}")
 
     # Open sockets and write ATR
     app_socket, plugin_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
@@ -143,10 +154,12 @@ if __name__ == '__main__':
     # Connect to a card and print the ATR
     cardInfo = gp.OPGP_CARD_INFO()
     gp.OPGP_card_connect(cardContext, str(plugin_socket.fileno()), cardInfo, (gp.OPGP_CARD_PROTOCOL_T0 | gp.OPGP_CARD_PROTOCOL_T1))
-    print(f"Found card, ATR: {cardInfo.ATR[:cardInfo.ATRLength].hex()}")
 
     # List installed applets
-    list_applets(cardContext, cardInfo)
+    try:
+        list_applets(cardContext, cardInfo)
+    except gp.OPGPError as e:
+        print(f"Failed: {e.errorMessage}")
         
     # Close connections
     gp.OPGP_card_disconnect(cardContext, cardInfo)

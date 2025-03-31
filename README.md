@@ -12,7 +12,7 @@ Make sure you have a C compilation toolchain, `cmake`, and `pkg-config` installe
 mkdir -p build
 cd build
 cmake ..
-make -j$(nproc)
+make
 make install
 ```
 
@@ -24,10 +24,8 @@ Modify your systems library search path, e.g. `LD_LIBRARY_PATH` to include the d
 
 ## Usage
 
-Communication is done by by transmitting the APDUs over a socket of type `AF_UNIX` with `SOCK_SEQPACKET` framing. The plugin uses the reader name as the file descriptor ID of the socket, e.g. `4`.
+Communication is done by by transmitting the APDUs over a socket of type `AF_UNIX` with `SOCK_SEQPACKET` framing. The plugin uses the reader name as the file descriptor ID of the socket, e.g. the string `4`.
 
 This kind of socket can be created by e.g. `socketpair()`, with the transport implementation listening on the other socket on the other side. All calls are blocking and wait and expect complete records, which means the counterpart of the socket needs to be operated in a separate thread.
 
 The plugin will try to read the ATR from the socket when a card connection is requested, so make sure that data is already written to the socket, otherwise the ATR will be empty.
-
-### GPShell
