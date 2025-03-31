@@ -23,12 +23,13 @@
             globalplatform
             pcsclite
             (python3.withPackages (ps: with ps; [
+              pyscard
               (pkgs.python3Packages.pyglobalplatform.overrideAttrs (oldAttrs: {
                 src = pkgs.fetchFromGitHub {
                   owner = "StarGate01";
                   repo = "pyglobalplatform";
                   rev = "master";
-                  sha256 = "sha256-X2ZOr6/P8HLbi9recYj6CtfXOWHjbciHkBmAKk3+YWM=";
+                  sha256 = "sha256-mJG1oLU62aP2tBzvYIDQxtKpc/nkFNQAhuuDI1UB5Yo=";
                 };
               }))
             ]))

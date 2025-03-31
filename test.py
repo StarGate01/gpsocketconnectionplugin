@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 
-import os, socket
+import os, socket, threading, argparse
 
 import globalplatform as gp
+
+import smartcard
+from smartcard.System import readers
+from smartcard.CardRequest import CardRequest
+from smartcard.CardType import AnyCardType
+from smartcard.ExclusiveConnectCardConnection import ExclusiveConnectCardConnection
 
 
 def list_applets(cardContext, cardInfo):
@@ -25,9 +31,8 @@ def list_applets(cardContext, cardInfo):
     gp.GP211_mutual_authentication(cardContext, cardInfo, 
         baseKey = zero_key, S_ENC = key, S_MAC = key, DEK = key, keyLength = len(key),
         keySetVersion = 0, keyIndex = 0, secureChannelProtocol = scp[0], secureChannelProtocolImpl = scpImpl[0],
-        securityLevel = gp.GP211_SCP02_SECURITY_LEVEL_C_MAC_R_MAC,
+        securityLevel = gp.GP211_SCP02_SECURITY_LEVEL_C_DEC_C_MAC_R_MAC,
         derivationMethod = gp.OPGP_DERIVATION_METHOD_NONE, secInfo = secInfo)
-    print(f"Session keys: C_MAC: {secInfo.C_MACSessionKey[:secInfo.keyLength].hex()}, R_MAC: {secInfo.R_MACSessionKey[:secInfo.keyLength].hex()}")
 
     # Query installed packages and applications
     executableData = gp.new_GP211_EXECUTABLE_MODULES_DATA_Array(64)
@@ -72,20 +77,62 @@ def list_applets(cardContext, cardInfo):
         print(f" - Version: {app.versionNumber[0]}.{app.versionNumber[1]}")
         print(f" - Lifecycle: {app.lifeCycleState}")
         print(f" - Privileges: {app.privileges}")
+    print("")
     gp.delete_GP211_APPLICATION_DATA_Array(applData)
 
+def apdu_proxy(card, sock, stop_eventc):
+    try:
+        sock.settimeout(0.5)
+        while not stop_event.is_set():
+            try:
+                command = sock.recv(4096)
+                if not command:
+                    print("Connection closed by peer.")
+                    break
+                print(f">> {command.hex()}")
+                data, sw1, sw2 = card.connection.transmit(list(command))
+                response = bytes(data + [sw1, sw2])
+                print(f"<< {response.hex()}")
+                sock.send(response)
+
+            except socket.timeout:
+                continue
+            except (ConnectionResetError, BrokenPipeError):
+                print("Connection error, closing socket.")
+                break
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                break
+    finally:
+        sock.close()
+    
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description = 'Test global platform unix socket plugin')
+    parser.add_argument('-r', '--reader', nargs='?', dest='reader', type=str, required=True, help='PC/SC reader to use')
+    args = parser.parse_args()
+
     # Enable debug logging to the console
     os.environ["GLOBALPLATFORM_DEBUG"] = "1"
     os.environ["GLOBALPLATFORM_LOGFILE"] = "/dev/stdout"
 
-    # Open sockets
-    my_socket, plugin_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    # Wait for and connect to card via PC/SC
+    print(f'info: Using reader {args.reader}, waiting for specified cards ... ', end='', flush=True)
+    request = CardRequest(timeout=None, newcardonly=False, readers=[args.reader], cardType=AnyCardType())
+    card = request.waitforcard()
+    print('found a new card')
+    card.connection = ExclusiveConnectCardConnection(card.connection)
+    card.connection.connect()
+    atr = card.connection.getATR()
+    print(f'info: Found card with ATR: {bytes(atr).hex()}')
 
-    # Send ATR
-    atr = bytes([0x42, 0x99, 0x13, 0x37])
-    if(my_socket.sendmsg([atr], [], socket.MSG_EOR) != len(atr)):
-        raise Exception("Cannot send ATR")
+    # Open sockets and write ATR
+    app_socket, plugin_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    app_socket.sendmsg([bytes(atr)])
+
+    # Start ADPU proxy
+    stop_event = threading.Event()
+    proxy_thread = threading.Thread(target=apdu_proxy, args=(card, app_socket, stop_event), daemon=True)
+    proxy_thread.start()
 
     # Open card context
     cardContext = gp.OPGP_CARD_CONTEXT()
@@ -95,8 +142,7 @@ if __name__ == '__main__':
 
     # Connect to a card and print the ATR
     cardInfo = gp.OPGP_CARD_INFO()
-    reader = f"/dev/fd/{str(plugin_socket.fileno())}"
-    gp.OPGP_card_connect(cardContext, reader, cardInfo, (gp.OPGP_CARD_PROTOCOL_T0 | gp.OPGP_CARD_PROTOCOL_T1))
+    gp.OPGP_card_connect(cardContext, str(plugin_socket.fileno()), cardInfo, (gp.OPGP_CARD_PROTOCOL_T0 | gp.OPGP_CARD_PROTOCOL_T1))
     print(f"Found card, ATR: {cardInfo.ATR[:cardInfo.ATRLength].hex()}")
 
     # List installed applets
@@ -106,6 +152,13 @@ if __name__ == '__main__':
     gp.OPGP_card_disconnect(cardContext, cardInfo)
     gp.OPGP_release_context(cardContext)
 
+    # Exit proxy
+    stop_event.set()
+    proxy_thread.join()
+
     # Close sockets
     plugin_socket.close()
-    my_socket.close()
+    app_socket.close()
+
+    # Close card connection
+    card.connection.disconnect()
