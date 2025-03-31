@@ -1,7 +1,7 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLOBALPLATFORM REQUIRED globalplatform)
 
-add_library(gpsocketconnectionplugin SHARED gpsocketconnectionplugin.c)
+add_library(gpsocketconnectionplugin SHARED gpsocketconnectionplugin.c util.c)
 
 set_target_properties(gpsocketconnectionplugin PROPERTIES VERSION 1.0.0 SOVERSION 1 )
 

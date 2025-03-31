@@ -24,7 +24,7 @@ Modify your systems library search path, e.g. `LD_LIBRARY_PATH` to include the d
 
 ## Usage
 
-Communication is done by by transmitting the APDUs over a socket of type `AF_UNIX` with `SOCK_SEQPACKET` framing and strict `MSG_EOL` checking. The plugin uses the reader name as the filename for the socket, e.g. `/dev/fd/42`.
+Communication is done by by transmitting the APDUs over a socket of type `AF_UNIX` with `SOCK_SEQPACKET` framing. The plugin uses the reader name as the file descriptor ID of the socket, e.g. `4`.
 
 This kind of socket can be created by e.g. `socketpair()`, with the transport implementation listening on the other socket on the other side. All calls are blocking and wait and expect complete records, which means the counterpart of the socket needs to be operated in a separate thread.
 

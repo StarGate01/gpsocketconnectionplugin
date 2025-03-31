@@ -4,6 +4,7 @@
         "connectionplugin.h": "c",
         "library.h": "c",
         "compare": "c",
-        "cstdint": "c"
+        "cstdint": "c",
+        "stdlib.h": "c"
     }
 }
