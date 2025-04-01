@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:StarGate01/nixpkgs/gpshell-python";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   };
 
   outputs = { self, nixpkgs }:
@@ -24,14 +24,35 @@
             pcsclite
             (python3.withPackages (ps: with ps; [
               pyscard
-              (pkgs.python3Packages.pyglobalplatform.overrideAttrs (oldAttrs: {
-                src = pkgs.fetchFromGitHub {
+              (buildPythonPackage {
+                pname = "pyglobalplatform";
+                version = "1.0.0";
+
+                src = fetchFromGitHub {
                   owner = "StarGate01";
                   repo = "pyglobalplatform";
                   rev = "master";
-                  sha256 = "sha256-psuIVox5Ggog30qtj6Jrfla2OwU8O2YNTY2TyxbpqGw=";
+                  sha256 = "sha256-XGSpRsrqHZL4266dbhD0GihSx8qQ9x5uJdy3JFgq/BE=";
                 };
-              }))
+
+                pyproject = true;
+
+                nativeBuildInputs = [
+                  pkg-config
+                  swig
+                ];
+
+                buildInputs = [
+                  globalplatform
+                  pcsclite
+                ];
+
+                propagatedBuildInputs = [
+                  setuptools
+                ];
+
+                pythonImportsCheck = [ "globalplatform" ];
+              })
             ]))
           ];
         };

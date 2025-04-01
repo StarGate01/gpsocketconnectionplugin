@@ -2,7 +2,7 @@
 
 import os, socket, threading, argparse
 
-import globalplatform as gp
+import globalplatform.native as gp
 
 import smartcard
 from smartcard.System import readers
@@ -90,10 +90,10 @@ def apdu_proxy(card, sock, stop_event):
                 if not command:
                     print("Connection closed by peer.")
                     break
-                #print(f">> {command.hex()}")
+                print(f">> {command.hex()}")
                 data, sw1, sw2 = card.connection.transmit(list(command))
                 response = bytes(data + [sw1, sw2])
-                #print(f"<< {response.hex()}")
+                print(f"<< {response.hex()}")
                 sock.send(response)
 
             except socket.timeout:
@@ -113,8 +113,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Enable debug logging to the console
-    #os.environ["GLOBALPLATFORM_DEBUG"] = "1"
-    #os.environ["GLOBALPLATFORM_LOGFILE"] = "/dev/stdout"
+    os.environ["GLOBALPLATFORM_DEBUG"] = "1"
+    os.environ["GLOBALPLATFORM_LOGFILE"] = "/dev/stdout"
 
     # Wait for and connect to card via PC/SC
     print(f'info: Using reader {args.reader}, waiting for specified cards ... ', end='', flush=True)
@@ -125,16 +125,6 @@ if __name__ == '__main__':
     card.connection.connect()
     atr = card.connection.getATR()
     print(f'info: Found card with ATR: {bytes(atr).hex()}')
-
-    # Read key diversification data (KDD ID)
-    data, sw1, sw2 = card.connection.transmit([0x00, 0xa4, 0x04, 0x00, len(ISD_AID)] + list(ISD_AID))
-    if(sw1 != 0x90 and sw2 != 0x00):
-        raise Exception("Cannot select ISD")
-    data, sw1, sw2 = card.connection.transmit([0x80, 0x50, 0x00, 0x00, 8] + list(bytearray(8)))
-    if(sw1 != 0x90 and sw2 != 0x00):
-        raise Exception("Cannot process initialize update")
-    kdd = bytes(data[:10])
-    print(f"KDD: {kdd.hex()}")
 
     # Open sockets and write ATR
     app_socket, plugin_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC)
