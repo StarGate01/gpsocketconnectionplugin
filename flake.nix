@@ -6,6 +6,36 @@
   outputs = { self, nixpkgs }:
     let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
+
+      pyglobalplatform = (pkgs.python3Packages.buildPythonPackage {
+        pname = "pyglobalplatform";
+        version = "1.0.0";
+
+        src = pkgs.fetchFromGitHub {
+          owner = "StarGate01";
+          repo = "pyglobalplatform";
+          rev = "master";
+          sha256 = "sha256-XGSpRsrqHZL4266dbhD0GihSx8qQ9x5uJdy3JFgq/BE=";
+        };
+
+        pyproject = true;
+
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          swig
+        ];
+
+        buildInputs = with pkgs; [
+          globalplatform
+          pcsclite
+        ];
+
+        propagatedBuildInputs = with pkgs.python3Packages; [
+          setuptools
+        ];
+
+        pythonImportsCheck = [ "globalplatform" ];
+      });
     in
     {
       devShell.x86_64-linux =
@@ -24,35 +54,7 @@
             pcsclite
             (python3.withPackages (ps: with ps; [
               pyscard
-              (buildPythonPackage {
-                pname = "pyglobalplatform";
-                version = "1.0.0";
-
-                src = fetchFromGitHub {
-                  owner = "StarGate01";
-                  repo = "pyglobalplatform";
-                  rev = "master";
-                  sha256 = "sha256-XGSpRsrqHZL4266dbhD0GihSx8qQ9x5uJdy3JFgq/BE=";
-                };
-
-                pyproject = true;
-
-                nativeBuildInputs = [
-                  pkg-config
-                  swig
-                ];
-
-                buildInputs = [
-                  globalplatform
-                  pcsclite
-                ];
-
-                propagatedBuildInputs = [
-                  setuptools
-                ];
-
-                pythonImportsCheck = [ "globalplatform" ];
-              })
+              pyglobalplatform
             ]))
           ];
         };
