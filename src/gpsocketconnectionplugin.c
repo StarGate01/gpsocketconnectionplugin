@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 #include <sys/un.h> 
 #include <errno.h>
+#include <poll.h>
 
 #include <globalplatform/debug.h>
 #include <globalplatform/error.h>
@@ -34,7 +35,6 @@
 #include "gpsocketconnectionplugin.h"
 #include "util.h"
 
-
 #define CHECK_CARD_INFO_INITIALIZATION(cardInfo, status) \
     if (cardInfo.librarySpecific == NULL) { \
         OPGP_ERROR_CREATE_ERROR(status, OPGP_PL_ERROR_NO_CARD_INFO_INITIALIZED, OPGP_PL_stringify_error(OPGP_PL_ERROR_NO_CARD_INFO_INITIALIZED)); \
@@ -44,13 +44,37 @@
 #define GET_SOCKET_CARD_INFO_SPECIFIC(cardInfo) ((SOCKET_CARD_INFO_SPECIFIC *)(cardInfo.librarySpecific))
 
 #define HANDLE_STATUS(status, result) if (result != SCARD_S_SUCCESS) {\
-	OPGP_ERROR_CREATE_ERROR(status,result,OPGP_PL_stringify_error((DWORD)result));\
-	}\
-	else {\
-	OPGP_ERROR_CREATE_NO_ERROR(status);\
-	}
+    OPGP_ERROR_CREATE_ERROR(status,result,OPGP_PL_stringify_error((DWORD)result));\
+    }\
+    else {\
+    OPGP_ERROR_CREATE_NO_ERROR(status);\
+    }
 
+// Wait indefinitely for socket readiness
+static int wait_socket(int fd, int for_read) {
+    struct pollfd pfd = {
+        .fd = fd,
+        .events = for_read ? POLLIN : POLLOUT
+    };
+    int ret = poll(&pfd, 1, -1);
+    if (ret <= 0) return -1; // error or unexpected
+    if (pfd.revents & (for_read ? POLLIN : POLLOUT)) return 0;
+    return -1; // not the event we wanted (e.g., POLLHUP)
+}
 
+// Wrapped send with blocking wait
+static ssize_t send_blocking(int sockfd, const void *buf, size_t len) {
+    if (wait_socket(sockfd, 0) < 0) return -1;
+    return send(sockfd, buf, len, 0);
+}
+
+// Wrapped recv with blocking wait
+static ssize_t recv_blocking(int sockfd, void *buf, size_t len) {
+    if (wait_socket(sockfd, 1) < 0) return -1;
+    return recv(sockfd, buf, len, 0);
+}
+
+// Establish the context for the plugin (no-op)
 OPGP_ERROR_STATUS OPGP_PL_establish_context(OPGP_CARD_CONTEXT *cardContext) {
     OPGP_ERROR_STATUS status;
     memset(&status, 0, sizeof(OPGP_ERROR_STATUS));
@@ -58,6 +82,7 @@ OPGP_ERROR_STATUS OPGP_PL_establish_context(OPGP_CARD_CONTEXT *cardContext) {
     return status;
 }
 
+// Release the plugin context (no-op)
 OPGP_ERROR_STATUS OPGP_PL_release_context(OPGP_CARD_CONTEXT *cardContext) {
     OPGP_ERROR_STATUS status;
     memset(&status, 0, sizeof(OPGP_ERROR_STATUS));
@@ -65,6 +90,7 @@ OPGP_ERROR_STATUS OPGP_PL_release_context(OPGP_CARD_CONTEXT *cardContext) {
     return status;
 }
 
+// Provide a fake reader name to satisfy GlobalPlatform reader list API
 OPGP_ERROR_STATUS OPGP_PL_list_readers(OPGP_CARD_CONTEXT cardContext, OPGP_STRING readerNames, PDWORD readerNamesLength) {
     OPGP_ERROR_STATUS status;
     memset(&status, 0, sizeof(OPGP_ERROR_STATUS));
@@ -83,11 +109,12 @@ OPGP_ERROR_STATUS OPGP_PL_list_readers(OPGP_CARD_CONTEXT cardContext, OPGP_STRIN
     return status;
 }
 
+// Connect to a socket-based smartcard proxy via file descriptor
 OPGP_ERROR_STATUS OPGP_PL_card_connect(OPGP_CARD_CONTEXT cardContext, OPGP_CSTRING socketFd, OPGP_CARD_INFO *cardInfo, DWORD protocol) {
     OPGP_ERROR_STATUS status;
     memset(&status, 0, sizeof(OPGP_ERROR_STATUS));
     OPGP_LOG_START(_T("OPGP_PL_card_connect"));
-    
+
     int fd = atoi(socketFd);
     if (fd <= 0) {
         OPGP_ERROR_CREATE_ERROR(status, EINVAL, _T("Invalid file descriptor input"));
@@ -122,12 +149,9 @@ OPGP_ERROR_STATUS OPGP_PL_card_connect(OPGP_CARD_CONTEXT cardContext, OPGP_CSTRI
     cardInfo->librarySpecific = info;
     cardInfo->logicalChannel = 0;
 
-    ssize_t atrLen = recv(fd, cardInfo->ATR, sizeof(cardInfo->ATR), 0);
-    if (atrLen > 0) {
-        cardInfo->ATRLength = (DWORD)atrLen;
-    } else {
-        cardInfo->ATRLength = 0;
-    }
+    // Receive ATR after connection
+    ssize_t atrLen = recv_blocking(fd, cardInfo->ATR, sizeof(cardInfo->ATR));
+    cardInfo->ATRLength = (atrLen > 0) ? (DWORD)atrLen : 0;
 
     OPGP_ERROR_CREATE_NO_ERROR(status);
 
@@ -136,6 +160,7 @@ end:
     return status;
 }
 
+// Disconnect from socket proxy and free memory
 OPGP_ERROR_STATUS OPGP_PL_card_disconnect(OPGP_CARD_CONTEXT cardContext, OPGP_CARD_INFO *cardInfo) {
     OPGP_ERROR_STATUS status;
     memset(&status, 0, sizeof(OPGP_ERROR_STATUS));
@@ -150,6 +175,7 @@ end:
     return status;
 }
 
+// Send APDU to socket-proxied card and receive response
 OPGP_ERROR_STATUS OPGP_PL_send_APDU(OPGP_CARD_CONTEXT cardContext, OPGP_CARD_INFO cardInfo,
         PBYTE capdu, DWORD capduLength, PBYTE rapdu, PDWORD rapduLength) {
     OPGP_ERROR_STATUS status;
@@ -178,13 +204,13 @@ OPGP_ERROR_STATUS OPGP_PL_send_APDU(OPGP_CARD_CONTEXT cardContext, OPGP_CARD_INF
     if (caseAPDU == 4) capduLength--;
 
     // Initial APDU send via socket
-    if (send(sock, capdu, capduLength, 0) != (ssize_t)capduLength) {
+    if (send_blocking(sock, capdu, capduLength) != (ssize_t)capduLength) {
         OPGP_ERROR_CREATE_ERROR(status, errno, OPGP_stringify_error(errno));
         goto end;
     }
 
     // Initial receive from socket
-    ssize_t rlen = recv(sock, responseData, maxLen, 0);
+    ssize_t rlen = recv_blocking(sock, responseData, maxLen);
     if (rlen < 0) {
         OPGP_ERROR_CREATE_ERROR(status, errno, OPGP_stringify_error(errno));
         goto end;
@@ -218,12 +244,12 @@ OPGP_ERROR_STATUS OPGP_PL_send_APDU(OPGP_CARD_CONTEXT cardContext, OPGP_CARD_INF
                 le = la;
 
                 // Send the follow-up APDU (either corrected command or GET RESPONSE)
-                if (send(sock, capdu, capduLength, 0) != (ssize_t)capduLength) {
+                if (send_blocking(sock, capdu, capduLength) != (ssize_t)capduLength) {
                     OPGP_ERROR_CREATE_ERROR(status, errno, OPGP_stringify_error(errno));
                     goto end;
                 }
 
-                rlen = recv(sock, responseData + offset, maxLen - offset, 0);
+                rlen = recv_blocking(sock, responseData + offset, maxLen - offset);
                 if (rlen < 0) {
                     OPGP_ERROR_CREATE_ERROR(status, errno, OPGP_stringify_error(errno));
                     goto end;
@@ -264,12 +290,12 @@ OPGP_ERROR_STATUS OPGP_PL_send_APDU(OPGP_CARD_CONTEXT cardContext, OPGP_CARD_INF
         le = la;
 
         // Send GET RESPONSE
-        if (send(sock, capdu, capduLength, 0) != (ssize_t)capduLength) {
+        if (send_blocking(sock, capdu, capduLength) != (ssize_t)capduLength) {
             OPGP_ERROR_CREATE_ERROR(status, errno, OPGP_stringify_error(errno));
             goto end;
         }
 
-        rlen = recv(sock, responseData + offset, maxLen - offset, 0);
+        rlen = recv_blocking(sock, responseData + offset, maxLen - offset);
         if (rlen < 0) {
             OPGP_ERROR_CREATE_ERROR(status, errno, OPGP_stringify_error(errno));
             goto end;
@@ -292,6 +318,7 @@ end:
     return status;
 }
 
+// Provide plugin-specific error message
 OPGP_STRING OPGP_PL_stringify_error(DWORD errorCode) {
     if (errorCode == OPGP_PL_ERROR_NO_CARD_INFO_INITIALIZED) {
         return (OPGP_STRING)_T("Socket plugin is not initialized. A card connection must be created first.");
