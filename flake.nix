@@ -15,7 +15,7 @@
           owner = "StarGate01";
           repo = "pyglobalplatform";
           rev = "master";
-          sha256 = "sha256-XGSpRsrqHZL4266dbhD0GihSx8qQ9x5uJdy3JFgq/BE=";
+          sha256 = "sha256-p8adsJmOZ6wVKrHCb5dWpWN8KLJqE/pyF/gQ/u5L3rA=";
         };
 
         pyproject = true;
